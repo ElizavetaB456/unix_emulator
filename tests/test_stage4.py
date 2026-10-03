@@ -45,7 +45,7 @@ class TestEmulator4:
         assert em.cwd == "/"
 
     def test_cmd_cd_no_args(self, tmp_vfs):
-        """cd без аргументов — переход в корень."""
+        """cd без аргументов - переход в корень."""
         em = Emulator4(vfs_path=tmp_vfs)
         em.cwd = "/home"
         result = em.cmd_cd([])
