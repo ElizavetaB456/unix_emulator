@@ -94,21 +94,14 @@ class Emulator5:
         target = self.cwd if not args else self.resolve_path(
             args[0])
         if target not in self.vfs:
-            print(f"ls: cannot access '{args[0] if args else ''}'"
+            arg_display = args[0] if args else ""
+            print(f"ls: cannot access '{arg_display}'"
                   f": No such file or directory")
             return False
         if self.vfs[target]['type'] != 'dir':
             print(os.path.basename(target))
             return True
-        contents = []
-        prefix = target if target == "/" else target + "/"
-        for path in self.vfs.keys():
-            if path == target:
-                continue
-            if path.startswith(prefix):
-                relative = path[len(prefix):].lstrip("/")
-                if "/" not in relative:
-                    contents.append(relative)
+        contents = self._list_dir_contents(target)
         if contents:
             print(" ".join(sorted(contents)))
         return True
@@ -191,12 +184,7 @@ class Emulator5:
 
         self.vfs[dst] = self.vfs.pop(src)
         if self.vfs[dst]['type'] == 'dir':
-            prefix = src + "/"
-            to_update = [k for k in self.vfs.keys()
-                        if k.startswith(prefix)]
-            for old_key in to_update:
-                new_key = old_key.replace(src, dst, 1)
-                self.vfs[new_key] = self.vfs.pop(old_key)
+            self._move_directory_children(src, dst)
         return True
 
     def execute_command(self, tokens):
@@ -207,6 +195,16 @@ class Emulator5:
         args = tokens[1:]
         self.history.append(" ".join(tokens))
 
+        commands = {
+            "ls": self.cmd_ls,
+            "cd": self.cmd_cd,
+            "history": self.cmd_history,
+            "cal": self.cmd_cal,
+            "who": self.cmd_who,
+            "mkdir": self.cmd_mkdir,
+            "mv": self.cmd_mv,
+        }
+
         if cmd == "exit":
             print("Exiting emulator...")
             sys.exit(0)
@@ -215,20 +213,8 @@ class Emulator5:
             print(f"custom_prompt: {self.custom_prompt}")
             print(f"script_path: {self.script_path}")
             return True
-        elif cmd == "ls":
-            return self.cmd_ls(args)
-        elif cmd == "cd":
-            return self.cmd_cd(args)
-        elif cmd == "history":
-            return self.cmd_history(args)
-        elif cmd == "cal":
-            return self.cmd_cal(args)
-        elif cmd == "who":
-            return self.cmd_who(args)
-        elif cmd == "mkdir":
-            return self.cmd_mkdir(args)
-        elif cmd == "mv":
-            return self.cmd_mv(args)
+        elif cmd in commands:
+            return commands[cmd](args)
         else:
             print(f"{cmd}: command not found")
             return False
