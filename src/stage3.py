@@ -11,7 +11,6 @@ MIN_CSV_COLUMNS=2
 
 class Emulator3:
     """Эмулятор с поддержкой VFS из CSV."""
-
     def __init__(self, vfs_path=None, custom_prompt=None,
                  script_path=None):
         """Инициализация эмулятора."""
