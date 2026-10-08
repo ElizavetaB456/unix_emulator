@@ -9,6 +9,8 @@ import socket
 import shlex
 import calendar
 from datetime import datetime
+MIN_CSV_COLUMNS=2
+MIN_MV_ARGS=2
 
 
 class Emulator5:
@@ -56,7 +58,7 @@ class Emulator5:
                         continue
                     path = row[0]
                     item_type = row[1]
-                    content = row[2] if len(row) > 2 else ""
+                    content = row[2] if len(row) > MIN_CSV_COLUMNS else ""
                     self.vfs[path] = {
                         'type': item_type,
                         'content': content
@@ -162,7 +164,7 @@ class Emulator5:
 
     def cmd_mv(self, args):
         """Перемещает или переименовывает файл/директорию."""
-        if len(args) < 2:
+        if len(args) < MIN_MV_ARGS:
             print("mv: missing file operand")
             return False
         src = self.resolve_path(args[0])
