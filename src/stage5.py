@@ -12,7 +12,6 @@ from datetime import datetime
 MIN_CSV_COLUMNS=2
 MIN_MV_ARGS=2
 
-
 class Emulator5:
     """Полнофункциональный эмулятор командной строки."""
 
