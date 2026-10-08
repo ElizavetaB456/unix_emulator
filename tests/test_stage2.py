@@ -4,7 +4,6 @@ EXPECTED_HISTORY_LENGTH=2
 
 class TestEmulator2:
     """Тесты эмулятора с конфигурацией."""
-
     def test_init_defaults(self):
         """Инициализация без аргументов."""
         em = Emulator2()
