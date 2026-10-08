@@ -1,6 +1,6 @@
 """Тесты для Emulator2 (этап 2)."""
 from src.stage2 import Emulator2
-
+EXPECTED_HISTORY_LENGTH=2
 
 class TestEmulator2:
     """Тесты эмулятора с конфигурацией."""
@@ -48,7 +48,7 @@ class TestEmulator2:
         em = Emulator2()
         em.execute_command(["ls"])
         em.execute_command(["who"])
-        assert len(em.history) == 2
+        assert len(em.history) == EXPECTED_HISTORY_LENGTH
         assert "ls" in em.history[0]
         assert "who" in em.history[1]
 
