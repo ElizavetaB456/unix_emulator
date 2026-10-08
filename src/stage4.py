@@ -13,7 +13,6 @@ MIN_CSV_COLUMNS=2
 
 class Emulator4:
     """Эмулятор с основными командами."""
-
     def __init__(self, vfs_path=None, custom_prompt=None,
                  script_path=None):
         """Инициализация эмулятора."""
