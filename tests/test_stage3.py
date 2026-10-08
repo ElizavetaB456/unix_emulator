@@ -2,7 +2,6 @@
 from src.stage3 import Emulator3
 MIN_VFS_ENTRIES=5
 
-
 class TestEmulator3:
     """Тесты эмулятора с VFS."""
 
