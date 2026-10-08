@@ -7,7 +7,7 @@ import base64
 import getpass
 import socket
 import shlex
-
+MIN_CSV_COLUMNS=2
 
 class Emulator3:
     """Эмулятор с поддержкой VFS из CSV."""
@@ -54,7 +54,7 @@ class Emulator3:
                         continue
                     path = row[0]
                     item_type = row[1]
-                    content = row[2] if len(row) > 2 else ""
+                    content = row[2] if len(row) > MIN_CSV_COLUMNS else ""
                     self.vfs[path] = {
                         'type': item_type,
                         'content': content
