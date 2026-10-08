@@ -9,7 +9,7 @@ import socket
 import shlex
 import calendar
 from datetime import datetime
-
+MIN_CSV_COLUMNS=2
 
 class Emulator4:
     """Эмулятор с основными командами."""
@@ -56,7 +56,7 @@ class Emulator4:
                         continue
                     path = row[0]
                     item_type = row[1]
-                    content = row[2] if len(row) > 2 else ""
+                    content = row[2] if len(row) > MIN_CSV_COLUMNS else ""
                     self.vfs[path] = {
                         'type': item_type,
                         'content': content
