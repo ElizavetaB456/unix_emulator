@@ -91,24 +91,16 @@ class Emulator4:
 
     def cmd_ls(self, args):
         """Выводит содержимое директории."""
-        target = self.cwd if not args else self.resolve_path(
-            args[0])
+        target = self.cwd if not args else self.resolve_path(args[0])
         if target not in self.vfs:
-            print(f"ls: cannot access '{args[0] if args else ''}'"
+            arg_display = args[0] if args else ""
+            print(f"ls: cannot access '{arg_display}'"
                   f": No such file or directory")
             return False
         if self.vfs[target]['type'] != 'dir':
             print(os.path.basename(target))
             return True
-        contents = []
-        prefix = target if target == "/" else target + "/"
-        for path in self.vfs.keys():
-            if path == target:
-                continue
-            if path.startswith(prefix):
-                relative = path[len(prefix):].lstrip("/")
-                if "/" not in relative:
-                    contents.append(relative)
+        contents = self._list_dir_contents(target)
         if contents:
             print(" ".join(sorted(contents)))
         return True
