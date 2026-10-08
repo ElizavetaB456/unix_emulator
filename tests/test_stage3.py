@@ -1,5 +1,6 @@
 """Тесты для Emulator3 (этап 3)."""
 from src.stage3 import Emulator3
+MIN_VFS_ENTRIES=5
 
 
 class TestEmulator3:
@@ -46,4 +47,4 @@ class TestEmulator3:
     def test_vfs_item_count(self, tmp_vfs):
         """Количество элементов в VFS."""
         em = Emulator3(vfs_path=tmp_vfs)
-        assert len(em.vfs) >= 5
+        assert len(em.vfs) >= MIN_VFS_ENTRIES
