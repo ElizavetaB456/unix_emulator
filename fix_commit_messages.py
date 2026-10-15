@@ -1,10 +1,8 @@
 """Rewrite commit messages of unix_emulator to Conventional Commits.
-
 Run from the repository root:  python fix_commit_messages.py
 Then publish:                  git push --force-with-lease origin main
 Dates, authors and file contents of commits are kept.
 """
-
 import os
 import subprocess
 import sys
@@ -38,20 +36,28 @@ MESSAGES = {
 def message_filter() -> None:
     """Called by git for every commit: print the new message or keep the old one."""
     old_message = sys.stdin.read()
-    new_subject = MESSAGES.get(os.environ.get("GIT_COMMIT", "")[:7])
-    sys.stdout.write(new_subject + "\n" if new_subject else old_message)
+    commit_hash = os.environ.get("GIT_COMMIT", "")[:7]
+    new_subject = MESSAGES.get(commit_hash)
+    
+    if new_subject:
+        sys.stdout.write(new_subject + "\n")
+    else:
+        sys.stdout.write(old_message)
 
 
 def main() -> None:
     """Run git filter-branch with this file as the message filter."""
     script = os.path.abspath(__file__).replace("\\", "/")
-    command = f'"{sys.executable}" "{script}" --filter'.replace("\\", "/")
+    command = f'"{sys.executable}" "{script}" --filter'
     environment = dict(os.environ, FILTER_BRANCH_SQUELCH_WARNING="1")
+    
+    print("Начинаю переписывание истории коммитов...")
     subprocess.run(
         ["git", "filter-branch", "-f", "--msg-filter", command, "--", "main"],
         check=True,
         env=environment,
     )
+    print("\nНовая история коммитов:")
     subprocess.run(["git", "log", "--oneline"], check=True)
 
 
