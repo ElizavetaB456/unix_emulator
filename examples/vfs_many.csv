@@ -1,0 +1,8 @@
+path,type,content
+/,dir,
+/home,dir,
+/home/user,dir,
+/home/user/readme.txt,file,Hello from VFS
+/etc,dir,
+/etc/config.txt,file,mode=demo
+/tmp,dir,
