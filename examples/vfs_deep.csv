@@ -1,0 +1,10 @@
+path,type,content
+/,dir,
+/home,dir,
+/home/user,dir,
+/home/user/docs,dir,
+/home/user/docs/notes.txt,file,Three levels deep
+/var,dir,
+/var/log,dir,
+/var/log/app,dir,
+/var/log/app/app.log,file,ready
