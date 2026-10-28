@@ -1,6 +1,7 @@
 @echo off
 rem Запуск эмулятора. По умолчанию используется этап 5.
 setlocal
+cd /d "%~dp0"
 if "%STAGE%"=="" set "STAGE=5"
 if not "%STAGE%"=="1" if not "%STAGE%"=="2" if not "%STAGE%"=="3" if not "%STAGE%"=="4" if not "%STAGE%"=="5" (
     echo STAGE must be a number from 1 to 5 1>&2

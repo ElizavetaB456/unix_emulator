@@ -1,21 +1,24 @@
-# Makefile для эмулятора командной строки
+# Сборка не требуется: команды запуска эмулятора, тестов и демонстраций.
 
-.PHONY: run test clean
+.PHONY: run test demo clean
 
-# Параметры по умолчанию
-STAGE ?= 1
+PYTHON ?= python3
+STAGE ?= 5
 VFS ?=
 PROMPT ?=
 SCRIPT ?=
 
-# Формирование аргументов
-ARGS := $(if $(VFS),--vfs $(VFS),) $(if $(PROMPT),--prompt "$(PROMPT)",) $(if $(SCRIPT),--script $(SCRIPT),)
+ARGS := $(if $(VFS),--vfs $(VFS),) $(if $(PROMPT),--prompt "$(PROMPT)",) \
+        $(if $(SCRIPT),--script $(SCRIPT),)
 
 run:
-	python -m src.stage$(STAGE) $(ARGS)
+	$(PYTHON) -m src.stage$(STAGE) $(ARGS)
 
 test:
-	pytest tests/ -v
+	$(PYTHON) -m pytest -v
+
+demo:
+	sh scripts/test_stages.sh
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
