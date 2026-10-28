@@ -1,10 +1,10 @@
 @echo off
+rem Этап 3: загрузка разных вариантов VFS и ошибки загрузки.
 setlocal
-rem Проверка загрузки минимальной, обычной и глубоко вложенной VFS.
-python -c "print('exit')" | python -m src.stage3 --vfs examples/vfs_minimal.csv --prompt "mini> " --script examples/startup_stage3.sh
-if errorlevel 1 exit /b 1
-python -c "print('exit')" | python -m src.stage3 --vfs examples/vfs_many.csv --prompt "many> " --script examples/startup_stage3.sh
-if errorlevel 1 exit /b 1
-python -c "print('exit')" | python -m src.stage3 --vfs examples/vfs_deep.csv --prompt "deep> " --script examples/startup_stage3.sh
-if errorlevel 1 exit /b 1
-echo VFS checks passed.
+cd /d "%~dp0.."
+for %%v in (vfs_minimal vfs_many vfs_deep vfs_invalid no_such_file) do (
+    echo ===== %%v
+    (echo conf-dump& echo exit) | python -m src.stage3 --vfs examples\%%v.csv --prompt "%%v> "
+)
+echo ===== startup script
+python -m src.stage3 --vfs examples\vfs_deep.csv --script examples\startup_stage3.txt < nul
