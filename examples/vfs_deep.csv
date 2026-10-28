@@ -1,10 +1,12 @@
-path,type,content
-/,dir,
-/home,dir,
-/home/user,dir,
-/home/user/docs,dir,
-/home/user/docs/notes.txt,file,Three levels deep
-/var,dir,
-/var/log,dir,
-/var/log/app,dir,
-/var/log/app/app.log,file,ready
+path,type,content,encoding
+/,dir,,
+/home,dir,,
+/home/user,dir,,
+/home/user/docs,dir,,
+/home/user/docs/notes.txt,file,Three levels deep,text
+/home/user/docs/archive,dir,,
+/home/user/docs/archive/old.dat,file,AAECAwQF,base64
+/var,dir,,
+/var/log,dir,,
+/var/log/app,dir,,
+/var/log/app/app.log,file,ready,text

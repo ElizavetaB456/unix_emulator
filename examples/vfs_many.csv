@@ -1,8 +1,9 @@
-path,type,content
-/,dir,
-/home,dir,
-/home/user,dir,
-/home/user/readme.txt,file,Hello from VFS
-/etc,dir,
-/etc/config.txt,file,mode=demo
-/tmp,dir,
+path,type,content,encoding
+/,dir,,
+/home,dir,,
+/home/user,dir,,
+/home/user/readme.txt,file,Hello from VFS,text
+/home/user/logo.png,file,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==,base64
+/etc,dir,,
+/etc/config.txt,file,mode=demo,text
+/tmp,dir,,

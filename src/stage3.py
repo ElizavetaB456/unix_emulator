@@ -1,173 +1,175 @@
-"""Эмулятор командной строки. Этап 3: VFS из CSV."""
-import os
-import sys
-import argparse
-import csv
-import base64
-import getpass
-import socket
-import shlex
-MIN_CSV_COLUMNS=2
+"""Эмулятор командной строки. Вариант 3. Этап 3: VFS.
 
-class Emulator3:
-    """Эмулятор с поддержкой VFS из CSV."""
+Виртуальная файловая система загружается из CSV-файла и целиком
+хранится в памяти; сам CSV-файл не изменяется.
+
+Формат CSV (первая строка - заголовок):
+
+    path,type,content,encoding
+    /,dir,,
+    /home,dir,,
+    /home/readme.txt,file,Hello,text
+    /bin/logo.bin,file,iVBORw0KGgo=,base64
+
+* path - абсолютный путь; вложенность задаётся путём: элемент
+  /home/user/a.txt лежит в каталоге /home/user, который должен быть
+  описан в файле;
+* type - dir (каталог) или file (файл);
+* content - содержимое файла (для каталогов пусто);
+* encoding - text (по умолчанию) или base64 для двоичных данных.
+"""
+
+import base64
+import binascii
+import csv
+import sys
+
+from src.stage2 import Emulator2, main as run_main
+
+DIR = "dir"
+FILE = "file"
+ENCODINGS = ("text", "base64")
+MIN_COLUMNS = 2
+PATH_COL, TYPE_COL, CONTENT_COL, ENCODING_COL = range(4)
+
+
+class VFSError(Exception):
+    """Ошибка загрузки или структуры VFS."""
+
+
+def normalize_path(path):
+    """Привести абсолютный путь к каноническому виду (обработать . и ..)."""
+    parts = []
+    for part in path.split("/"):
+        if part == "..":
+            if parts:
+                parts.pop()
+        elif part and part != ".":
+            parts.append(part)
+    return "/" + "/".join(parts)
+
+
+def parent_of(path):
+    """Родительский каталог пути (для корня - сам корень)."""
+    if path == "/":
+        return "/"
+    head = path.rsplit("/", 1)[0]
+    return head or "/"
+
+
+def base_name(path):
+    """Последний компонент пути."""
+    return path.rsplit("/", 1)[-1]
+
+
+def _decode_content(row, line):
+    """Получить содержимое файла в виде байтов."""
+    content = row[CONTENT_COL] if len(row) > CONTENT_COL else ""
+    encoding = row[ENCODING_COL] if len(row) > ENCODING_COL else ""
+    encoding = encoding.strip() or "text"
+    if encoding not in ENCODINGS:
+        raise VFSError(f"line {line}: unknown encoding '{encoding}'")
+    if encoding == "text":
+        return content.encode("utf-8")
+    try:
+        return base64.b64decode(content, validate=True)
+    except (binascii.Error, ValueError):
+        raise VFSError(f"line {line}: invalid base64 data") from None
+
+
+def _parse_row(row, line):
+    """Разобрать строку CSV в пару (путь, узел VFS)."""
+    if len(row) < MIN_COLUMNS:
+        raise VFSError(f"line {line}: expected path,type[,content,encoding]")
+    raw_path, kind = row[PATH_COL].strip(), row[TYPE_COL].strip()
+    if not raw_path.startswith("/"):
+        raise VFSError(f"line {line}: path must be absolute: '{raw_path}'")
+    if kind not in (DIR, FILE):
+        raise VFSError(f"line {line}: unknown type '{kind}'")
+    content = _decode_content(row, line) if kind == FILE else b""
+    return normalize_path(raw_path), {"type": kind, "content": content}
+
+
+def _check_tree(vfs):
+    """Проверить, что у каждого элемента есть родительский каталог."""
+    for path in vfs:
+        parent = parent_of(path)
+        if path != "/" and vfs.get(parent, {}).get("type") != DIR:
+            raise VFSError(f"'{path}': parent directory '{parent}' "
+                           "is missing")
+
+
+def _read_rows(handle, vfs):
+    """Прочитать строки CSV и добавить элементы в словарь VFS."""
+    for line, row in enumerate(csv.reader(handle), 1):
+        if not row or (line == 1 and row[0].strip() == "path"):
+            continue
+        path, node = _parse_row(row, line)
+        if path in vfs and path != "/":
+            raise VFSError(f"line {line}: duplicate path '{path}'")
+        vfs[path] = node
+
+
+def load_vfs(csv_path):
+    """Загрузить VFS из CSV-файла в словарь путь -> узел."""
+    vfs = {"/": {"type": DIR, "content": b""}}
+    try:
+        with open(csv_path, encoding="utf-8", newline="") as handle:
+            _read_rows(handle, vfs)
+    except OSError as error:
+        raise VFSError(f"cannot read '{csv_path}': {error.strerror}") \
+            from None
+    except csv.Error as error:
+        raise VFSError(f"invalid CSV: {error}") from None
+    _check_tree(vfs)
+    return vfs
+
+
+class Emulator3(Emulator2):
+    """Эмулятор с виртуальной файловой системой в памяти."""
+
     def __init__(self, vfs_path=None, custom_prompt=None,
                  script_path=None):
-        """Инициализация эмулятора."""
-        self.username = getpass.getuser()
-        self.hostname = socket.gethostname()
-        self.vfs_path = vfs_path
-        self.custom_prompt = custom_prompt
-        self.script_path = script_path
-        self.history = []
-        self.vfs = {}
+        """Загрузить VFS (если задана) и установить текущий каталог."""
+        super().__init__(vfs_path, custom_prompt, script_path)
         self.cwd = "/"
-        if self.vfs_path:
-            self.load_vfs()
+        self.vfs = load_vfs(vfs_path) if vfs_path else {
+            "/": {"type": DIR, "content": b""}}
 
-    def get_prompt(self):
-        """Возвращает приглашение ввода."""
-        if self.custom_prompt:
-            return self.custom_prompt
-        return f"{self.username}@{self.hostname}:~$ "
-
-    def parse_and_expand(self, user_input):
-        """Парсит ввод и раскрывает переменные окружения."""
-        if not user_input:
-            return []
-        expanded = os.path.expandvars(user_input)
-        try:
-            return shlex.split(expanded)
-        except ValueError:
-            print("Syntax error in quotes")
-            return []
-
-    def load_vfs(self):
-        """Загружает VFS из CSV-файла."""
-        try:
-            with open(self.vfs_path, 'r',
-                      encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if not row or row[0].startswith('path'):
-                        continue
-                    path = row[0]
-                    item_type = row[1]
-                    content = row[2] if len(row) > MIN_CSV_COLUMNS else ""
-                    self.vfs[path] = {
-                        'type': item_type,
-                        'content': content
-                    }
-            if "/" not in self.vfs:
-                self.vfs["/"] = {
-                    'type': 'dir',
-                    'content': ''
-                }
-        except Exception as e:
-            print(f"Error loading VFS CSV file: {e}")
-            sys.exit(1)
+    def config_items(self):
+        """Добавить к параметрам сведения о загруженной VFS."""
+        return super().config_items() + [("vfs_items", len(self.vfs))]
 
     def resolve_path(self, target_path):
-        """Преобразует путь в абсолютный."""
+        """Преобразовать путь (абсолютный или относительный) в абсолютный."""
         if not target_path:
             return self.cwd
         if target_path.startswith("/"):
-            absolute = target_path
-        else:
-            if self.cwd == "/":
-                absolute = "/" + target_path
-            else:
-                absolute = self.cwd + "/" + target_path
-        parts = []
-        for part in absolute.split("/"):
-            if part == "." and parts:
-                parts.pop()
-            elif part and part != ".":
-                parts.append(part)
-        return "/" + "/".join(parts)
+            return normalize_path(target_path)
+        return normalize_path(self.cwd + "/" + target_path)
 
-    def execute_command(self, tokens):
-        """Выполняет команду."""
-        if not tokens:
-            return True
-        cmd = tokens[0]
-        args = tokens[1:]
-        self.history.append(" ".join(tokens))
+    def exists(self, path):
+        """Есть ли элемент VFS по абсолютному пути."""
+        return path in self.vfs
 
-        if cmd == "exit":
-            print("Exiting emulator...")
-            sys.exit(0)
-        elif cmd == "conf-dump":
-            print(f"vfs_path: {self.vfs_path}")
-            print(f"custom_prompt: {self.custom_prompt}")
-            print(f"script_path: {self.script_path}")
-            return True
-        elif cmd in ["ls", "cd"]:
-            print(f"[Stub] Command: {cmd}, "
-                  f"Arguments: {args}")
-            return True
-        else:
-            print(f"{cmd}: command not found")
-            return False
+    def is_dir(self, path):
+        """Является ли элемент каталогом."""
+        return self.vfs.get(path, {}).get("type") == DIR
 
-    def run_script(self):
-        """Выполняет команды из стартового скрипта."""
-        if not os.path.exists(self.script_path):
-            print(f"Error: Script file "
-                  f"'{self.script_path}' not found")
-            sys.exit(1)
-
-        with open(self.script_path, 'r',
-                  encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                print(f"{self.get_prompt()}{line}")
-                tokens = self.parse_and_expand(line)
-                success = self.execute_command(tokens)
-                if not success:
-                    print("Script execution halted "
-                          "due to an error.")
-                    sys.exit(1)
-
-    def run(self):
-        """Главный цикл эмулятора."""
-        print("---Emulator Configuration---")
-        print(f"VFS Path: {self.vfs_path}")
-        print(f"Custom Prompt: {self.custom_prompt}")
-        print(f"Script Path: {self.script_path}")
-        print(f"VFS loaded: {len(self.vfs)} items")
-        print("-------------")
-
-        if self.script_path:
-            self.run_script()
-
-        while True:
-            try:
-                user_input = input(
-                    f"{self.get_prompt()}").strip()
-                tokens = self.parse_and_expand(
-                    user_input)
-                self.execute_command(tokens)
-            except (KeyboardInterrupt, EOFError):
-                break
+    def list_dir(self, path):
+        """Отсортированные имена элементов каталога."""
+        return sorted(base_name(item) for item in self.vfs
+                      if item != "/" and parent_of(item) == path)
 
 
-def parse_args():
-    """Парсит аргументы командной строки."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--vfs", default=None)
-    parser.add_argument("--prompt", default=None)
-    parser.add_argument("--script", default=None)
-    return parser.parse_args()
+def main(emulator_class=Emulator3, argv=None):
+    """Запустить эмулятор; при ошибке загрузки VFS вернуть код 1."""
+    try:
+        return run_main(emulator_class, argv)
+    except VFSError as error:
+        print(f"VFS error: {error}")
+        return 1
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    emulator = Emulator3(
-        vfs_path=args.vfs,
-        custom_prompt=args.prompt,
-        script_path=args.script
-    )
-    emulator.run()
+    sys.exit(main())

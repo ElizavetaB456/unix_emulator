@@ -1,0 +1,3 @@
+path,type,content,encoding
+/,dir,,
+/home/user/file.txt,file,parent directory is missing,text
