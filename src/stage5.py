@@ -1,283 +1,128 @@
-"""Эмулятор командной строки. Этап 5: полнофункциональный эмулятор."""
-import os
+"""Эмулятор командной строки. Вариант 3. Этап 5: команды mkdir и mv.
+
+Команды изменяют только представление VFS в памяти; исходный CSV-файл
+не изменяется.
+"""
+
 import sys
-import argparse
-import csv
-import base64
-import getpass
-import socket
-import shlex
-import calendar
-from datetime import datetime
-MIN_CSV_COLUMNS=2
-MIN_MV_ARGS=2
 
-class Emulator5:
-    """Полнофункциональный эмулятор командной строки."""
+from src.stage3 import DIR, base_name, main as run_main, normalize_path, \
+    parent_of
+from src.stage4 import Emulator4
 
-    def __init__(self, vfs_path=None, custom_prompt=None,
-                 script_path=None):
-        """Инициализация эмулятора."""
-        self.username = getpass.getuser()
-        self.hostname = socket.gethostname()
-        self.vfs_path = vfs_path
-        self.custom_prompt = custom_prompt
-        self.script_path = script_path
-        self.history = []
-        self.vfs = {}
-        self.cwd = "/"
-        if self.vfs_path:
-            self.load_vfs()
+MIN_MV_OPERANDS = 2
 
-    def get_prompt(self):
-        """Возвращает приглашение ввода."""
-        if self.custom_prompt:
-            return self.custom_prompt
-        return f"{self.username}@{self.hostname}:~$ "
 
-    def parse_and_expand(self, user_input):
-        """Парсит ввод и раскрывает переменные окружения."""
-        if not user_input:
-            return []
-        expanded = os.path.expandvars(user_input)
-        try:
-            return shlex.split(expanded)
-        except ValueError:
-            print("Syntax error in quotes")
-            return []
+class Emulator5(Emulator4):
+    """Эмулятор с командами mkdir и mv, изменяющими VFS в памяти."""
 
-    def load_vfs(self):
-        """Загружает VFS из CSV-файла."""
-        try:
-            with open(self.vfs_path, 'r',
-                      encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if not row or row[0].startswith('path'):
-                        continue
-                    path = row[0]
-                    item_type = row[1]
-                    content = row[2] if len(row) > MIN_CSV_COLUMNS else ""
-                    self.vfs[path] = {
-                        'type': item_type,
-                        'content': content
-                    }
-            if "/" not in self.vfs:
-                self.vfs["/"] = {
-                    'type': 'dir',
-                    'content': ''
-                }
-        except Exception as e:
-            print(f"Error loading VFS: {e}")
-            sys.exit(1)
+    def get_commands(self):
+        """Добавить команды mkdir и mv."""
+        commands = super().get_commands()
+        commands.update({"mkdir": self.cmd_mkdir, "mv": self.cmd_mv})
+        return commands
 
-    def resolve_path(self, target_path):
-        """Преобразует путь в абсолютный."""
-        if not target_path:
-            return self.cwd
-        if target_path.startswith("/"):
-            absolute = target_path
-        else:
-            if self.cwd == "/":
-                absolute = "/" + target_path
-            else:
-                absolute = self.cwd + "/" + target_path
-        parts = []
-        for part in absolute.split("/"):
-            if part == "." and parts:
-                parts.pop()
-            elif part and part != ".":
-                parts.append(part)
-        return "/" + "/".join(parts)
-
-    def cmd_ls(self, args):
-        """Выводит содержимое директории."""
-        target = self.cwd if not args else self.resolve_path(
-            args[0])
-        if target not in self.vfs:
-            arg_display = args[0] if args else ""
-            print(f"ls: cannot access '{arg_display}'"
-                  f": No such file or directory")
+    def _make_dir(self, arg, parents):
+        """Создать один каталог; parents - режим -p."""
+        path = self.resolve_path(arg)
+        if self.exists(path):
+            if parents and self.is_dir(path):
+                return True
+            print(f"mkdir: cannot create directory '{arg}': File exists")
             return False
-        if self.vfs[target]['type'] != 'dir':
-            print(os.path.basename(target))
-            return True
-        contents = self._list_dir_contents(target)
-        if contents:
-            print(" ".join(sorted(contents)))
-        return True
-
-    def cmd_cd(self, args):
-        """Меняет текущую директорию."""
-        if not args:
-            self.cwd = "/"
-            return True
-        target = self.resolve_path(args[0])
-        if target in self.vfs and self.vfs[target]['type'] == 'dir':
-            self.cwd = target
-            return True
-        else:
-            print(f"cd: no such file or directory: {args[0]}")
+        parent = parent_of(path)
+        if not self.exists(parent) and parents:
+            if not self._make_dir(parent, parents):
+                return False
+        if not self.exists(parent):
+            print(f"mkdir: cannot create directory '{arg}': "
+                  "No such file or directory")
             return False
-
-    def cmd_history(self, args):
-        """Выводит историю команд."""
-        for idx, item in enumerate(self.history, 1):
-            print(f"{idx}  {item}")
-        return True
-
-    def cmd_cal(self, args):
-        """Выводит календарь текущего месяца."""
-        now = datetime.now()
-        print(calendar.month(now.year, now.month))
-        return True
-
-    def cmd_who(self, args):
-        """Выводит имя текущего пользователя."""
-        print(self.username)
+        if not self.is_dir(parent):
+            print(f"mkdir: cannot create directory '{arg}': "
+                  "Not a directory")
+            return False
+        self.vfs[path] = {"type": DIR, "content": b""}
         return True
 
     def cmd_mkdir(self, args):
-        """Создает новую директорию."""
-        if not args:
+        """mkdir [-p] каталог ... - создать каталоги."""
+        parents = "-p" in args
+        operands = [arg for arg in args if arg != "-p"]
+        for arg in operands:
+            if arg.startswith("-"):
+                print(f"mkdir: invalid option -- '{arg[1:]}'")
+                return False
+        if not operands:
             print("mkdir: missing operand")
             return False
-        for dir_arg in args:
-            target = self.resolve_path(dir_arg)
-            if target in self.vfs:
-                print(f"mkdir: cannot create directory "
-                      f"'{dir_arg}': File exists")
-                return False
-            parent = "/".join(target.split("/")[:-1])
-            if not parent:
-                parent = "/"
-            if parent not in self.vfs or self.vfs[parent]['type'] != 'dir':
-                print(f"mkdir: cannot create directory "
-                      f"'{dir_arg}': No such directory")
-                return False
-            self.vfs[target] = {
-                'type': 'dir',
-                'content': ''
-            }
+        results = [self._make_dir(arg, parents) for arg in operands]
+        return all(results)
+
+    def _rename_tree(self, src, dst):
+        """Переименовать элемент и всех его потомков в словаре VFS."""
+        prefix = src + "/"
+        for path in sorted(self.vfs):
+            if path == src or path.startswith(prefix):
+                self.vfs[dst + path[len(src):]] = self.vfs.pop(path)
+
+    def _check_target(self, src, dst, dst_arg):
+        """Проверить, можно ли переместить src в dst. Текст ошибки/None."""
+        if dst == src:
+            return "are the same file"
+        if dst.startswith(src + "/"):
+            return "cannot move to a subdirectory of itself"
+        parent = parent_of(dst)
+        if not self.is_dir(parent):
+            return f"cannot move to '{dst_arg}': No such file or directory"
+        if not self.exists(dst):
+            return None
+        if self.is_dir(dst) and not self.is_dir(src):
+            return f"cannot overwrite directory '{dst_arg}' " \
+                   "with non-directory"
+        if self.is_dir(src) and not self.is_dir(dst):
+            return f"cannot overwrite non-directory '{dst_arg}' " \
+                   "with directory"
+        if self.list_dir(dst):
+            return f"cannot move: '{dst_arg}': Directory not empty"
+        return None
+
+    def _move_one(self, src_arg, dst_arg):
+        """Переместить или переименовать один элемент."""
+        src = self.resolve_path(src_arg)
+        if not self.exists(src) or src == "/":
+            print(f"mv: cannot stat '{src_arg}': No such file or directory")
+            return False
+        dst = self.resolve_path(dst_arg)
+        if self.is_dir(dst) and dst != src:
+            dst = normalize_path(dst + "/" + base_name(src))
+        problem = self._check_target(src, dst, dst_arg)
+        if problem:
+            print(f"mv: '{src_arg}': {problem}")
+            return False
+        self.vfs.pop(dst, None)
+        self._rename_tree(src, dst)
+        if self.cwd == src or self.cwd.startswith(src + "/"):
+            self.cwd = dst + self.cwd[len(src):]
         return True
 
     def cmd_mv(self, args):
-        """Перемещает или переименовывает файл/директорию."""
-        if len(args) < MIN_MV_ARGS:
+        """mv источник назначение | mv источник ... каталог."""
+        if len(args) < MIN_MV_OPERANDS:
             print("mv: missing file operand")
             return False
-        src = self.resolve_path(args[0])
-        dst = self.resolve_path(args[1])
-
-        if src not in self.vfs:
-            print(f"mv: cannot stat '{args[0]}': "
-                  f"No such file or directory")
+        *sources, target = args
+        if len(sources) > 1 and not self.is_dir(self.resolve_path(target)):
+            print(f"mv: target '{target}' is not a directory")
             return False
-
-        if dst in self.vfs and self.vfs[dst]['type'] == 'dir':
-            object_name = src.split("/")[-1]
-            dst = self.resolve_path(args[1] + "/" + object_name)
-
-        if dst in self.vfs and self.vfs[dst]['type'] == 'dir':
-            print(f"mv: cannot overwrite directory "
-                  f"'{args[1]}' with non-directory")
-            return False
-
-        self.vfs[dst] = self.vfs.pop(src)
-        if self.vfs[dst]['type'] == 'dir':
-            self._move_directory_children(src, dst)
-        return True
-
-    def execute_command(self, tokens):
-        """Выполняет команду."""
-        if not tokens:
-            return True
-        cmd = tokens[0]
-        args = tokens[1:]
-        self.history.append(" ".join(tokens))
-
-        commands = {
-            "ls": self.cmd_ls,
-            "cd": self.cmd_cd,
-            "history": self.cmd_history,
-            "cal": self.cmd_cal,
-            "who": self.cmd_who,
-            "mkdir": self.cmd_mkdir,
-            "mv": self.cmd_mv,
-        }
-
-        if cmd == "exit":
-            print("Exiting emulator...")
-            sys.exit(0)
-        elif cmd == "conf-dump":
-            print(f"vfs_path: {self.vfs_path}")
-            print(f"custom_prompt: {self.custom_prompt}")
-            print(f"script_path: {self.script_path}")
-            return True
-        elif cmd in commands:
-            return commands[cmd](args)
-        else:
-            print(f"{cmd}: command not found")
-            return False
-
-    def run_script(self):
-        """Выполняет команды из стартового скрипта."""
-        if not os.path.exists(self.script_path):
-            print(f"Error: Script file "
-                  f"'{self.script_path}' not found")
-            sys.exit(1)
-
-        with open(self.script_path, 'r',
-                  encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                print(f"{self.get_prompt()}{line}")
-                tokens = self.parse_and_expand(line)
-                success = self.execute_command(tokens)
-                if not success:
-                    print("Script execution halted "
-                          "due to an error.")
-                    sys.exit(1)
-
-    def run(self):
-        """Главный цикл эмулятора."""
-        print("---Emulator Configuration---")
-        print(f"VFS Path: {self.vfs_path}")
-        print(f"Custom Prompt: {self.custom_prompt}")
-        print(f"Script Path: {self.script_path}")
-        print(f"VFS loaded: {len(self.vfs)} items")
-        print("-------------")
-
-        if self.script_path:
-            self.run_script()
-
-        while True:
-            try:
-                user_input = input(
-                    f"{self.get_prompt()}").strip()
-                tokens = self.parse_and_expand(
-                    user_input)
-                self.execute_command(tokens)
-            except (KeyboardInterrupt, EOFError):
-                break
+        results = [self._move_one(src, target) for src in sources]
+        return all(results)
 
 
-def parse_args():
-    """Парсит аргументы командной строки."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--vfs", default=None)
-    parser.add_argument("--prompt", default=None)
-    parser.add_argument("--script", default=None)
-    return parser.parse_args()
+def main(argv=None):
+    """Запустить эмулятор этапа 5."""
+    return run_main(Emulator5, argv)
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    emulator = Emulator5(
-        vfs_path=args.vfs,
-        custom_prompt=args.prompt,
-        script_path=args.script
-    )
-    emulator.run()
+    sys.exit(main())

@@ -1,78 +1,95 @@
-"""Тесты для Emulator5 (этап 5)."""
+"""Тесты этапа 5: mkdir и mv."""
+
 from src.stage5 import Emulator5
 
 
-class TestEmulator5:
-    """Тесты полнофункционального эмулятора."""
+class TestMkdir:
+    """Команда mkdir."""
 
-    def test_cmd_mkdir_valid(self, tmp_vfs):
-        """Создание новой директории."""
+    def test_mkdir(self, tmp_vfs):
+        """Создание каталогов по абсолютному и относительному пути."""
         em = Emulator5(vfs_path=tmp_vfs)
-        result = em.cmd_mkdir(["/home/newdir"])
-        assert result is True
-        assert "/home/newdir" in em.vfs
-        assert em.vfs["/home/newdir"]["type"] == "dir"
+        assert em.handle_line("mkdir /home/new")
+        em.handle_line("cd /home")
+        assert em.handle_line("mkdir rel other")
+        assert em.is_dir("/home/new")
+        assert em.is_dir("/home/rel") and em.is_dir("/home/other")
 
-    def test_cmd_mkdir_no_args(self, capsys):
-        """mkdir без аргументов."""
-        em = Emulator5()
-        result = em.cmd_mkdir([])
-        assert result is False
-        captured = capsys.readouterr()
-        assert "missing operand" in captured.out
-
-    def test_cmd_mkdir_exists(self, tmp_vfs, capsys):
-        """mkdir уже существующей директории."""
+    def test_mkdir_parents(self, tmp_vfs):
+        """mkdir -p создаёт промежуточные каталоги."""
         em = Emulator5(vfs_path=tmp_vfs)
-        result = em.cmd_mkdir(["/home"])
-        assert result is False
-        captured = capsys.readouterr()
-        assert "File exists" in captured.out
+        assert em.handle_line("mkdir -p /a/b/c")
+        assert em.is_dir("/a") and em.is_dir("/a/b/c")
+        assert em.handle_line("mkdir -p /a/b")
 
-    def test_cmd_mkdir_no_parent(self, tmp_vfs, capsys):
-        """mkdir с несуществующим родителем."""
+    def test_mkdir_errors(self, tmp_vfs, capsys):
+        """Ошибки mkdir: каждая команда завершается неудачей."""
+        cases = {
+            "mkdir": "missing operand",
+            "mkdir /home": "File exists",
+            "mkdir /none/sub": "No such file or directory",
+            "mkdir /etc/config/sub": "Not a directory",
+            "mkdir -x /q": "invalid option",
+        }
         em = Emulator5(vfs_path=tmp_vfs)
-        result = em.cmd_mkdir(["/nonexistent/subdir"])
-        assert result is False
-        captured = capsys.readouterr()
-        assert "No such directory" in captured.out
+        for line, message in cases.items():
+            assert not em.handle_line(line)
+            assert message in capsys.readouterr().out
 
-    def test_cmd_mv_rename(self, tmp_vfs):
+
+class TestMv:
+    """Команда mv."""
+
+    def test_rename_file(self, tmp_vfs):
         """Переименование файла."""
         em = Emulator5(vfs_path=tmp_vfs)
-        result = em.cmd_mv(["/home/user/file.txt", "/home/user/renamed.txt"])
-        assert result is True
-        assert "/home/user/file.txt" not in em.vfs
-        assert "/home/user/renamed.txt" in em.vfs
+        assert em.handle_line("mv /home/user/file.txt /home/user/new.txt")
+        assert not em.exists("/home/user/file.txt")
+        assert em.vfs["/home/user/new.txt"]["content"] == b"Hello"
 
-    def test_cmd_mv_no_args(self, capsys):
-        """mv без аргументов."""
-        em = Emulator5()
-        result = em.cmd_mv([])
-        assert result is False
-        captured = capsys.readouterr()
-        assert "missing file operand" in captured.out
-
-    def test_cmd_mv_nonexistent_src(self, tmp_vfs, capsys):
-        """mv несуществующего источника."""
+    def test_move_into_dir(self, tmp_vfs):
+        """Перемещение файла в каталог."""
         em = Emulator5(vfs_path=tmp_vfs)
-        result = em.cmd_mv(["/nonexistent", "/home"])
-        assert result is False
-        captured = capsys.readouterr()
-        assert "cannot stat" in captured.out
+        assert em.handle_line("mv /etc/config /home")
+        assert em.exists("/home/config")
+        assert not em.exists("/etc/config")
 
-    def test_cmd_mv_into_dir(self, tmp_vfs):
-        """Перемещение файла в директорию."""
+    def test_move_dir_with_children(self, tmp_vfs):
+        """Перемещение каталога вместе с содержимым."""
         em = Emulator5(vfs_path=tmp_vfs)
-        result = em.cmd_mv(["/etc/config", "/home"])
-        assert result is True
-        assert "/etc/config" not in em.vfs
-        assert "/home/config" in em.vfs
+        em.handle_line("cd /home/user")
+        assert em.handle_line("mv /home/user /etc/u")
+        assert em.exists("/etc/u/file.txt")
+        assert not em.exists("/home/user")
+        assert em.cwd == "/etc/u"
 
-    def test_cmd_mv_one_arg(self, capsys):
-        """mv с одним аргументом."""
-        em = Emulator5()
-        result = em.cmd_mv(["/path"])
-        assert result is False
-        captured = capsys.readouterr()
-        assert "missing file operand" in captured.out
+    def test_move_many(self, tmp_vfs):
+        """Несколько источников перемещаются в каталог."""
+        em = Emulator5(vfs_path=tmp_vfs)
+        em.handle_line("mkdir /dst")
+        assert em.handle_line("mv /etc/config /home/user/file.txt /dst")
+        assert em.list_dir("/dst") == ["config", "file.txt"]
+
+    def test_mv_errors(self, tmp_vfs, capsys):
+        """Ошибки mv: каждая команда завершается неудачей."""
+        cases = {
+            "mv": "missing file operand",
+            "mv /home": "missing file operand",
+            "mv /nonexistent /home": "cannot stat",
+            "mv /home /home/user": "subdirectory of itself",
+            "mv /etc/config /none/x": "No such file or directory",
+            "mv /etc /home/user/file.txt": "non-directory",
+            "mv /etc/config /home/x /home/user/file.txt": "not a directory",
+        }
+        em = Emulator5(vfs_path=tmp_vfs)
+        for line, message in cases.items():
+            assert not em.handle_line(line)
+            assert message in capsys.readouterr().out
+
+    def test_csv_not_modified(self, tmp_vfs):
+        """Изменения выполняются только в памяти."""
+        before = open(tmp_vfs, encoding="utf-8").read()
+        em = Emulator5(vfs_path=tmp_vfs)
+        em.handle_line("mkdir /tmp2")
+        em.handle_line("mv /etc /tmp2")
+        assert open(tmp_vfs, encoding="utf-8").read() == before
