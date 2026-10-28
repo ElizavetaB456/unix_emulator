@@ -1,123 +1,120 @@
-"""Эмулятор командной строки. Этап 2: конфигурация и скрипты."""
-import os
-import sys
+"""Эмулятор командной строки. Вариант 3. Этап 2: конфигурация.
+
+Параметры командной строки: путь к VFS, пользовательское приглашение,
+путь к стартовому скрипту. При запуске выводятся все параметры
+(отладочный вывод), служебная команда conf-dump печатает их в формате
+ключ-значение. Стартовый скрипт выполняется с отображением ввода и
+вывода и останавливается при первой ошибке.
+"""
+
 import argparse
-import getpass
-import socket
-import shlex
+import sys
+
+from src.stage1 import EXIT_ERROR, Emulator1
 
 
-class Emulator2:
-    """Эмулятор с поддержкой конфигурации и скриптов."""
+class Emulator2(Emulator1):
+    """Эмулятор с параметрами командной строки и стартовым скриптом."""
 
     def __init__(self, vfs_path=None, custom_prompt=None,
                  script_path=None):
-        """Инициализация эмулятора с параметрами."""
-        self.username = getpass.getuser()
-        self.hostname = socket.gethostname()
+        """Сохранить параметры, заданные пользователем."""
+        super().__init__()
         self.vfs_path = vfs_path
         self.custom_prompt = custom_prompt
         self.script_path = script_path
-        self.history = []
 
     def get_prompt(self):
-        """Возвращает приглашение ввода."""
+        """Пользовательское приглашение или стандартное."""
         if self.custom_prompt:
             return self.custom_prompt
-        return f"{self.username}@{self.hostname}:~$ "
+        return super().get_prompt()
 
-    def parse_and_expand(self, user_input):
-        """Парсит ввод и раскрывает переменные окружения."""
-        if not user_input:
-            return []
-        expanded = os.path.expandvars(user_input)
-        try:
-            return shlex.split(expanded)
-        except ValueError:
-            print("Syntax error in quotes")
-            return []
+    def config_items(self):
+        """Параметры эмулятора в виде списка пар (ключ, значение)."""
+        return [
+            ("vfs_path", self.vfs_path),
+            ("custom_prompt", self.custom_prompt),
+            ("script_path", self.script_path),
+        ]
 
-    def execute_command(self, tokens):
-        """Выполняет команду и возвращает True при успехе."""
-        if not tokens:
-            return True
-        cmd = tokens[0]
-        args = tokens[1:]
-        self.history.append(" ".join(tokens))
+    def get_commands(self):
+        """Добавить служебную команду conf-dump."""
+        commands = super().get_commands()
+        commands["conf-dump"] = self.cmd_conf_dump
+        return commands
 
-        if cmd == "exit":
-            print("Exiting emulator...")
-            sys.exit(0)
-        elif cmd == "conf-dump":
-            print(f"vfs_path: {self.vfs_path}")
-            print(f"custom_prompt: {self.custom_prompt}")
-            print(f"script_path: {self.script_path}")
-            return True
-        elif cmd in ["ls", "cd"]:
-            print(f"[Stub] Command: {cmd}, "
-                  f"Arguments: {args}")
-            return True
-        else:
-            print(f"{cmd}: command not found")
+    def cmd_conf_dump(self, args):
+        """Вывести параметры эмулятора в формате ключ-значение."""
+        if args:
+            print("conf-dump: too many arguments")
             return False
+        for key, value in self.config_items():
+            print(f"{key}={value}")
+        return True
+
+    def print_config(self):
+        """Отладочный вывод всех параметров при запуске."""
+        print("--- emulator configuration ---")
+        for key, value in self.config_items():
+            print(f"{key}={value}")
+        print("------------------------------")
 
     def run_script(self):
-        """Выполняет команды из стартового скрипта."""
-        if not os.path.exists(self.script_path):
-            print(f"Error: Script file "
-                  f"'{self.script_path}' not found")
-            sys.exit(1)
+        """Выполнить стартовый скрипт. Возвращает True при успехе.
 
-        with open(self.script_path, 'r',
-                  encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                print(f"{self.get_prompt()}{line}")
-                tokens = self.parse_and_expand(line)
-                success = self.execute_command(tokens)
-                if not success:
-                    print("Script execution halted "
-                          "due to an error.")
-                    sys.exit(1)
+        Каждая команда выводится вместе с приглашением, как при вводе
+        пользователем. Пустые строки и строки, начинающиеся с #,
+        пропускаются. Выполнение останавливается при первой ошибке.
+        """
+        try:
+            with open(self.script_path, encoding="utf-8") as handle:
+                lines = handle.readlines()
+        except OSError as error:
+            print(f"script error: cannot read '{self.script_path}': "
+                  f"{error.strerror}")
+            return False
+        for number, raw in enumerate(lines, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            print(f"{self.get_prompt()}{line}")
+            if not self.handle_line(line):
+                print(f"script error: execution stopped at line {number}")
+                return False
+            if not self.running:
+                break
+        return True
 
     def run(self):
-        """Главный цикл эмулятора."""
-        print("---Emulator Configuration---")
-        print(f"VFS Path: {self.vfs_path}")
-        print(f"Custom Prompt: {self.custom_prompt}")
-        print(f"Script Path: {self.script_path}")
-        print("-------------")
-
-        if self.script_path:
-            self.run_script()
-
-        while True:
-            try:
-                user_input = input(
-                    f"{self.get_prompt()}").strip()
-                tokens = self.parse_and_expand(
-                    user_input)
-                self.execute_command(tokens)
-            except (KeyboardInterrupt, EOFError):
-                break
+        """Вывести параметры, выполнить скрипт и перейти в REPL."""
+        self.print_config()
+        if self.script_path and not self.run_script():
+            self.exit_code = EXIT_ERROR
+            return self.exit_code
+        return super().run()
 
 
-def parse_args():
-    """Парсит аргументы командной строки."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--vfs", default=None)
-    parser.add_argument("--prompt", default=None)
-    parser.add_argument("--script", default=None)
-    return parser.parse_args()
+def build_parser():
+    """Парсер параметров командной строки эмулятора."""
+    parser = argparse.ArgumentParser(
+        description="Эмулятор командной строки UNIX-подобной ОС")
+    parser.add_argument("--vfs", default=None,
+                        help="путь к физическому расположению VFS (CSV)")
+    parser.add_argument("--prompt", default=None,
+                        help="пользовательское приглашение к вводу")
+    parser.add_argument("--script", default=None,
+                        help="путь к стартовому скрипту")
+    return parser
+
+
+def main(emulator_class=Emulator2, argv=None):
+    """Разобрать параметры и запустить эмулятор указанного класса."""
+    args = build_parser().parse_args(argv)
+    emulator = emulator_class(vfs_path=args.vfs, custom_prompt=args.prompt,
+                              script_path=args.script)
+    return emulator.run()
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    emulator = Emulator2(
-        vfs_path=args.vfs,
-        custom_prompt=args.prompt,
-        script_path=args.script
-    )
-    emulator.run()
+    sys.exit(main())
