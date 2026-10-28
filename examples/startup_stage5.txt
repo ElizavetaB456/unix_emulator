@@ -1,0 +1,17 @@
+# Этап 5: mkdir и mv (изменения только в памяти, VFS vfs_deep.csv).
+mkdir /tmp
+mkdir /tmp/a /tmp/b
+mkdir -p /tmp/x/y/z
+ls /tmp
+mv /tmp/a /tmp/renamed
+mv /home/user/docs/notes.txt /tmp
+mv /tmp/b /tmp/x/y
+ls /tmp /tmp/x/y
+cd /tmp/x
+mv /tmp/x /var/moved
+ls
+mv /tmp/notes.txt /tmp/renamed /var
+ls /var
+# Ошибка: каталог уже существует, скрипт останавливается.
+mkdir /tmp
+ls

@@ -1,0 +1,21 @@
+# Этап 4: все режимы ls, cd, history, cal, who (VFS vfs_deep.csv).
+ls
+ls /home/user/docs
+ls /home/user/docs/notes.txt
+ls /home /var
+cd /home/user
+ls
+cd docs/archive
+ls
+cd ../..
+cd
+cd var/log
+who
+cal
+cal 2 2024
+cal 2026
+history 5
+history
+# Ошибка: скрипт останавливается на этой строке.
+cd /missing
+ls
